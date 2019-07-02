@@ -1,0 +1,283 @@
+Description: "Send Microservice to send emails and messages"
+Transform: "AWS::Serverless-2016-10-31"
+
+Globals:
+  Function:
+    Runtime: go1.x
+
+Parameters:
+  DatabaseName:
+    Type: String
+    Default: test_database
+  RDSDatabaseUserPassword:
+    Type: String
+  DatabaseServiceUser:
+    Type: String
+    Default: send_user
+  Version:
+    Type: String
+    Default: v1
+
+Resources:
+# Initial attempt
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.1.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+      - Key: Name
+        Value:  !Join ['', [!Ref Domain, "-VPC" ]]
+  # Our VPC will need internet access:     
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    DependsOn: VPC
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    # Notice how you can't attach an IGW to a VPC unless both are created:
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # Public Subnets
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.1.10.0/24
+      AvailabilityZone: !Select [ 0, !GetAZs ]    # Get the first AZ in the list       
+      Tags:
+      - Key: Names
+        Value: !Sub ${Domain}-PublicA
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.1.20.0/24
+      AvailabilityZone: !Select [ 1, !GetAZs ]    # Get the first AZ in the list       
+      Tags:
+      - Key: Name
+        Value: !Sub ${Domain}-PublicB
+
+  # Subnet Group
+  PublicSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties: 
+      DBSubnetGroupName: publicsubnetgroup
+      DBSubnetGroupDescription: Public Subnet Groups
+      SubnetIds:
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetB
+      Tags:
+        - 
+          Key: name
+          Value: Public Subnet Group
+  # Some route tables for our subnets:
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: Public
+  PublicRoute1:   # Public route table has direct routing to IGW:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  # Nat Gateway
+  NATGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt ElasticIPAddress.AllocationId
+      SubnetId: !Ref PublicSubnetA
+      Tags:
+      - Key: Name
+        Value: !Sub ${Domain}-NAT-Gateway
+  ElasticIPAddress:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: VPC
+
+  # Attach the public subnets to public route tables,
+  # and attach the private subnets to private route tables:
+  PublicSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to client host
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+      - IpProtocol: -1
+        FromPort: -1
+        ToPort: -1
+        CidrIp: 0.0.0.0/0
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    DependsOn:
+      - PublicSubnetA
+      - PublicSubnetB
+    Properties:
+      GroupDescription: Allow http to client host
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+      - IpProtocol: -1
+        FromPort: -1
+        ToPort: -1
+        CidrIp: 108.56.183.61/32
+      - IpProtocol: tcp
+        FromPort: 3306
+        ToPort: 3306
+        SourceSecurityGroupId: !GetAtt LambdaSecurityGroup.GroupId
+      SecurityGroupEgress:
+      - IpProtocol: -1
+        FromPort: -1
+        ToPort: -1
+        CidrIp: 0.0.0.0/0
+
+  # Database Cluster (Currently a serverless Aurora SQL DB)
+  # I'm not setting Redundancy for this as it's just a test, and EC2 is expensive
+  RDSDatabase:
+    Type: AWS::RDS::DBCluster
+    DependsOn: DatabaseSecurityGroup
+    Properties:
+      DBClusterIdentifier: !Ref DatabaseName
+      Engine: aurora
+      EnableIAMDatabaseAuthentication: true
+      MasterUsername: !Ref RDSDatabaseUserName
+      MasterUserPassword: !Ref RDSDatabaseUserPassword
+      DBSubnetGroupName: !Ref PublicSubnetGroup
+      VpcSecurityGroupIds:
+        - !GetAtt DatabaseSecurityGroup.GroupId
+  RDSInstance1:
+    Type: AWS::RDS::DBInstance
+    DependsOn:
+      - RDSDatabase
+      - PublicSubnetA
+    Properties:
+      DBClusterIdentifier: !Ref RDSDatabase
+      # Customize this to the size machine you want
+      DBInstanceClass: db.r4.large
+      Engine: aurora
+      PubliclyAccessible: true
+      DBSubnetGroupName: !Ref PublicSubnetGroup
+
+
+
+  # Deploy Lambda Code
+  # Note that there is a lot of wrapping that needs to be done here to ensure it doesn't hang for an hour
+
+  # API Lambda
+  SendServiceApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: SendServiceApi
+      StageName: !Ref Version
+      Cors:
+        AllowMethods: "'*'"
+        AllowHeaders: "'*'"
+        AllowOrigin: "'*'"
+  GroupsLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Handles Operations to add users, activate and deactivate users
+      Handler: ./dist/test
+      Timeout: 30
+      Policies:
+        - AWSLambdaVPCAccessExecutionRole
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - rds-db:connect
+              Resource: !Sub "arn:aws:rds-db:${AWS::Region}:${AWS::AccountId}:dbuser:cluster-UXAUNA3BUHX4DCPXMAQPNCIOSQ/admin"
+      Environment:
+        Variables:
+          DB_SERVICE_USER: !Ref DatabaseServiceUser
+          DB_ADMIN_USER: admin
+          DB_PASSWORD: !Ref RDSDatabaseUserPassword
+          DB_HOST: !ImportValue RDSDatabaseWriteHost
+          DB_PORT: !ImportValue RDSDatabasePort
+          DB_NAME: !Ref DatabaseName
+      VpcConfig:
+        SecurityGroupIds:
+          - !ImportValue LambdaSecurityGroupId
+        SubnetIds:
+          - !ImportValue PublicSubnetA
+          - !ImportValue PublicSubnetB
+      Events:
+        CreateUser:
+          Type: Api
+          Properties:
+            Path: /
+            RestApiId: !Ref SendServiceApi
+            Method: Get
+
+Outputs:
+  VPCID:
+    Description: The Logical ID for the VPC
+    Value: !Ref VPC
+    Export:
+      Name: VPCID
+  PublicSubnetA:
+    Description: First public Subnet
+    Value: !Ref PublicSubnetA
+    Export:
+      Name: PublicSubnetA
+  PublicSubnetB:
+    Description: Second public Subnet
+    Value: !Ref PublicSubnetB
+    Export:
+      Name: PublicSubnetB
+  PublicSubnetGroupName:
+    Description: Group of all the Public Subnets
+    Value: !Ref PublicSubnetGroup
+    Export:
+      Name: PublicSubnetGroupName
+  LambdaSecurityGroupId:
+    Description: The Security Group to put on the lambdas that need DB Access
+    Value: !GetAtt LambdaSecurityGroup.GroupId
+    Export:
+      Name: LambdaSecurityGroupId
+  RDSDatabaseWriteHost:
+    Description: Database Host URL
+    Value: !GetAtt RDSDatabase.Endpoint.Address
+    Export:
+      Name: RDSDatabaseWriteHost
+  RDSDatabasePort:
+    Description: Database Port to connect on
+    Value: !GetAtt RDSDatabase.Endpoint.Port
+    Export:
+      Name: RDSDatabasePort
+  RDSDatabaseReadHost:
+    Description: Database Read Only Host URL
+    Value: !GetAtt RDSDatabase.ReadEndpoint.Address
+    Export:
+      Name: RDSDatabaseReadHost
+  RDSDatabaseMasterUserName:
+    Description: The master username
+    Value: !Ref RDSDatabaseUserName
+    Export:
+      Name: RDSDatabaseMasterUserName
+
