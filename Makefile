@@ -6,7 +6,6 @@ ifeq ($(STACK_BUCKET),)
 STACK_BUCKET := 'RDS-test-stack-plumbing-bucket'
 endif
 
-
 .PHONY: test
 test:
 	aws cloudformation validate-template --template-body file://template.yaml
@@ -43,10 +42,10 @@ deploy:
 	aws cloudformation deploy \
 		--no-fail-on-empty-changeset \
 		--template-file template_deploy.yaml \
-		--stack-name test-database-service \
-		--parameter-overrides "Env=dev" "RDSDatabaseUserPassword=TestDatabasePasswordOfPassing"
+		--stack-name $(STACK_NAME) \
+		--capabilities CAPABILITY_IAM
 
 .PHONY: teardown
 teardown:
-	aws cloudformation delete-stack --stack-name test-database-service
+	aws cloudformation delete-stack --stack-name $(STACK_NAME)
 	clean

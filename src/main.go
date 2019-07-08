@@ -15,8 +15,7 @@ import (
 var dbName = os.Getenv("DB_NAME")
 var dbHost = os.Getenv("DB_HOST")
 var dbPort = os.Getenv("DB_PORT")
-var dbServiceUser = os.Getenv("DB_SERVICE_USER")
-var dbAdminUser = "admin"
+var dbAdminUser = os.Getenv("DB_ADMIN_USER")
 var dbPassword = os.Getenv("DB_PASSWORD")
 
 // Load the Env variables
@@ -35,15 +34,16 @@ CREATE TABLE IF NOT EXISTS user(
 
 // handleRequest Sends out the MMS Message using the Twilio Service
 func handleCrudRequest(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	fmt.Println("Actual function start")
-	db.MustExec(`CREATE DATABASE IF NOT EXISTS ?`, dbName)
+	fmt.Println("Actual function start and create the Database")
+	// db.MustExec(`CREATE DATABASE IF NOT EXISTS ?`, dbName)
+	db.MustExec(fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s`, dbName))
 	// db.MustExec(fmt.Sprintf(`USE %s`, dbName))
 
 	// db.MustExec(fmt.Sprintf("CREATE USER '%s' IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS';", dbServiceUser))
 	// db.MustExec(fmt.Sprintf("GRANT ALL ON PRIVILEDGES ON %s.* TO '%s'@'%';", dbName, dbServiceUser))
 	// db.MustExec("FLUSH PRIVILEDGES;")
 
-	db.MustExec(userTable)
+	// db.MustExec(userTable)
 
 	return events.APIGatewayProxyResponse{
 		StatusCode: 200,

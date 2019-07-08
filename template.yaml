@@ -8,12 +8,14 @@ Globals:
 Parameters:
   DatabaseName:
     Type: String
-    Default: test_database
+    Default: testdatabase
+  RDSDatabaseUserName:
+    Type: String
+    Default: admin
   RDSDatabaseUserPassword:
+    NoEcho: true
     Type: String
-  DatabaseServiceUser:
-    Type: String
-    Default: send_user
+    Default: testing1
   Version:
     Type: String
     Default: v1
@@ -27,8 +29,8 @@ Resources:
       EnableDnsSupport: true
       EnableDnsHostnames: true
       Tags:
-      - Key: Name
-        Value:  !Join ['', [!Ref Domain, "-VPC" ]]
+      - Key: name
+        Value:  !Join ['', [!Ref DatabaseName, "-VPC" ]]
   # Our VPC will need internet access:     
   InternetGateway:
     Type: AWS::EC2::InternetGateway
@@ -49,7 +51,11 @@ Resources:
       AvailabilityZone: !Select [ 0, !GetAZs ]    # Get the first AZ in the list       
       Tags:
       - Key: Names
-        Value: !Sub ${Domain}-PublicA
+        Value: !Sub ${DatabaseName}-PublicA
+      - Key: owner
+        Value:  Jeff Adams
+      - Key: client
+        Value:  marketing
   PublicSubnetB:
     Type: AWS::EC2::Subnet
     Properties:
@@ -58,7 +64,22 @@ Resources:
       AvailabilityZone: !Select [ 1, !GetAZs ]    # Get the first AZ in the list       
       Tags:
       - Key: Name
-        Value: !Sub ${Domain}-PublicB
+        Value: !Sub ${DatabaseName}-PublicB
+      - Key: owner
+        Value:  Jeff Adams
+      - Key: client
+        Value:  marketing
+
+  # Private Subnet
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.1.11.0/24
+      AvailabilityZone: !Select [ 0, !GetAZs ]    # Get the first AZ in the list       
+      Tags:
+      - Key: Names
+        Value: !Sub ${DatabaseName}-PublicA
 
   # Subnet Group
   PublicSubnetGroup:
@@ -70,9 +91,12 @@ Resources:
         - !Ref PublicSubnetA
         - !Ref PublicSubnetB
       Tags:
-        - 
-          Key: name
-          Value: Public Subnet Group
+      - Key: name
+        Value: Public Subnet Group
+      - Key: owner
+        Value:  Jeff Adams
+      - Key: client
+        Value:  marketing
   # Some route tables for our subnets:
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
@@ -81,6 +105,10 @@ Resources:
       Tags:
       - Key: Name
         Value: Public
+      - Key: owner
+        Value:  Jeff Adams
+      - Key: client
+        Value:  marketing
   PublicRoute1:   # Public route table has direct routing to IGW:
     Type: AWS::EC2::Route
     DependsOn: AttachGateway
@@ -90,18 +118,28 @@ Resources:
       GatewayId: !Ref InternetGateway
 
   # Nat Gateway
-  NATGateway:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId: !GetAtt ElasticIPAddress.AllocationId
-      SubnetId: !Ref PublicSubnetA
-      Tags:
-      - Key: Name
-        Value: !Sub ${Domain}-NAT-Gateway
-  ElasticIPAddress:
-    Type: AWS::EC2::EIP
-    Properties:
-      Domain: VPC
+  # Might not need the nat gateway under the assumption that we can just route from api gateway
+  # NATGateway:
+  #   Type: AWS::EC2::NatGateway
+  #   Properties:
+  #     AllocationId: !GetAtt ElasticIPAddress.AllocationId
+  #     SubnetId: !Ref PublicSubnetA
+  #     Tags:
+  #     - Key: Name
+  #       Value: !Sub ${DatabaseName}-NAT-Gateway
+  #     - Key: owner
+  #       Value:  Jeff Adams
+  #     - Key: client
+  #       Value:  marketing
+  # ElasticIPAddress:
+  #   Type: AWS::EC2::EIP
+  #   Properties:
+  #     Domain: VPC
+  #     Tags:
+  #     - Key: owner
+  #       Value:  Jeff Adams
+  #     - Key: client
+  #       Value:  marketing
 
   # Attach the public subnets to public route tables,
   # and attach the private subnets to private route tables:
@@ -128,7 +166,7 @@ Resources:
         ToPort: 80
         CidrIp: 0.0.0.0/0
       SecurityGroupEgress:
-      - IpProtocol: -1
+      - IpProtocol: '-1'
         FromPort: -1
         ToPort: -1
         CidrIp: 0.0.0.0/0
@@ -142,25 +180,29 @@ Resources:
       GroupDescription: Allow http to client host
       VpcId: !Ref VPC
       SecurityGroupIngress:
-      - IpProtocol: -1
+      - IpProtocol: "-1"
         FromPort: -1
         ToPort: -1
-        CidrIp: 108.56.183.61/32
+        CidrIp: 69.251.135.83/32
       - IpProtocol: tcp
         FromPort: 3306
         ToPort: 3306
         SourceSecurityGroupId: !GetAtt LambdaSecurityGroup.GroupId
       SecurityGroupEgress:
-      - IpProtocol: -1
+      - IpProtocol: "-1"
         FromPort: -1
         ToPort: -1
         CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: owner
+        Value:  Jeff Adams
+      - Key: client
+        Value:  marketing
 
   # Database Cluster (Currently a serverless Aurora SQL DB)
   # I'm not setting Redundancy for this as it's just a test, and EC2 is expensive
   RDSDatabase:
     Type: AWS::RDS::DBCluster
-    DependsOn: DatabaseSecurityGroup
     Properties:
       DBClusterIdentifier: !Ref DatabaseName
       Engine: aurora
@@ -170,10 +212,14 @@ Resources:
       DBSubnetGroupName: !Ref PublicSubnetGroup
       VpcSecurityGroupIds:
         - !GetAtt DatabaseSecurityGroup.GroupId
+      Tags:
+      - Key: owner
+        Value:  Jeff Adams
+      - Key: client
+        Value:  marketing
   RDSInstance1:
     Type: AWS::RDS::DBInstance
     DependsOn:
-      - RDSDatabase
       - PublicSubnetA
     Properties:
       DBClusterIdentifier: !Ref RDSDatabase
@@ -183,26 +229,27 @@ Resources:
       PubliclyAccessible: true
       DBSubnetGroupName: !Ref PublicSubnetGroup
 
-
-
   # Deploy Lambda Code
   # Note that there is a lot of wrapping that needs to be done here to ensure it doesn't hang for an hour
 
   # API Lambda
-  SendServiceApi:
+  ServiceApi:
     Type: AWS::Serverless::Api
     Properties:
-      Name: SendServiceApi
+      Name: ServiceApi
       StageName: !Ref Version
       Cors:
         AllowMethods: "'*'"
         AllowHeaders: "'*'"
         AllowOrigin: "'*'"
-  GroupsLambdaFunction:
+
+  ServiceLambdaFunction:
     Type: AWS::Serverless::Function
+    Description: Boilerplate function to create and handle incoming requests
+    DependsOn:
+      - RDSDatabase
     Properties:
-      Description: Handles Operations to add users, activate and deactivate users
-      Handler: ./dist/test
+      Handler: ./dist/main
       Timeout: 30
       Policies:
         - AWSLambdaVPCAccessExecutionRole
@@ -211,27 +258,26 @@ Resources:
             - Effect: Allow
               Action:
                 - rds-db:connect
-              Resource: !Sub "arn:aws:rds-db:${AWS::Region}:${AWS::AccountId}:dbuser:cluster-UXAUNA3BUHX4DCPXMAQPNCIOSQ/admin"
+              Resource: !Sub "arn:aws:rds-db:${AWS::Region}:${AWS::AccountId}:db:${RDSDatabase}"
       Environment:
         Variables:
-          DB_SERVICE_USER: !Ref DatabaseServiceUser
-          DB_ADMIN_USER: admin
+          DB_ADMIN_USER: !Ref RDSDatabaseUserName
           DB_PASSWORD: !Ref RDSDatabaseUserPassword
-          DB_HOST: !ImportValue RDSDatabaseWriteHost
-          DB_PORT: !ImportValue RDSDatabasePort
+          DB_HOST: !GetAtt RDSDatabase.Endpoint.Address
+          DB_PORT: !GetAtt RDSDatabase.Endpoint.Port
           DB_NAME: !Ref DatabaseName
       VpcConfig:
         SecurityGroupIds:
-          - !ImportValue LambdaSecurityGroupId
+          - !GetAtt LambdaSecurityGroup.GroupId
         SubnetIds:
-          - !ImportValue PublicSubnetA
-          - !ImportValue PublicSubnetB
+          - !Ref PublicSubnetA
+          - !Ref PublicSubnetB
       Events:
         CreateUser:
           Type: Api
           Properties:
             Path: /
-            RestApiId: !Ref SendServiceApi
+            RestApiId: !Ref ServiceApi
             Method: Get
 
 Outputs:
@@ -240,21 +286,6 @@ Outputs:
     Value: !Ref VPC
     Export:
       Name: VPCID
-  PublicSubnetA:
-    Description: First public Subnet
-    Value: !Ref PublicSubnetA
-    Export:
-      Name: PublicSubnetA
-  PublicSubnetB:
-    Description: Second public Subnet
-    Value: !Ref PublicSubnetB
-    Export:
-      Name: PublicSubnetB
-  PublicSubnetGroupName:
-    Description: Group of all the Public Subnets
-    Value: !Ref PublicSubnetGroup
-    Export:
-      Name: PublicSubnetGroupName
   LambdaSecurityGroupId:
     Description: The Security Group to put on the lambdas that need DB Access
     Value: !GetAtt LambdaSecurityGroup.GroupId
@@ -265,19 +296,6 @@ Outputs:
     Value: !GetAtt RDSDatabase.Endpoint.Address
     Export:
       Name: RDSDatabaseWriteHost
-  RDSDatabasePort:
-    Description: Database Port to connect on
-    Value: !GetAtt RDSDatabase.Endpoint.Port
-    Export:
-      Name: RDSDatabasePort
-  RDSDatabaseReadHost:
-    Description: Database Read Only Host URL
-    Value: !GetAtt RDSDatabase.ReadEndpoint.Address
-    Export:
-      Name: RDSDatabaseReadHost
-  RDSDatabaseMasterUserName:
-    Description: The master username
-    Value: !Ref RDSDatabaseUserName
-    Export:
-      Name: RDSDatabaseMasterUserName
-
+  ApiUrl:
+    Description: The API URL
+    Value: !Sub "https://${ServiceApi}.execute-api.${AWS::Region}.amazonaws.com/${Version}"
