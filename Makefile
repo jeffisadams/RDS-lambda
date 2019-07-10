@@ -25,6 +25,7 @@ deps: clean
 
 .PHONY: build
 build: deps
+	GOOS=linux go build -o dist/deploy ./src/deploy.go
 	GOOS=linux go build -o dist/main ./src/main.go
 
 # Leaving this here as a tidbit of extra info, but it's not 

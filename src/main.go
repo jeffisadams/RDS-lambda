@@ -1,58 +1,53 @@
 package main
 
 import (
-	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/service/rds/rdsutils"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 )
 
+// UserTransaction Creates a struct for the return values from out SQL table
+type UserTransaction struct {
+	ID    int    `json:"id"`
+	Email string `json:"email"`
+	Date  string `json:"date"`
+}
+
+// var dbReadOnlyHost = os.Getenv("DB_HOST")
+// var dbPort = os.Getenv("DB_PORT")
+// var dbServiceUser = os.Getenv("DB_SERVICE_USER")
+// var awsRegion = os.Getenv("AWS_REGION")
 var dbName = os.Getenv("DB_NAME")
-var dbHost = os.Getenv("DB_HOST")
-var dbPort = os.Getenv("DB_PORT")
-var dbAdminUser = os.Getenv("DB_ADMIN_USER")
-var dbPassword = os.Getenv("DB_PASSWORD")
+var dbTableName = os.Getenv("DB_TABLE_NAME")
 
 // Load the Env variables
 var db *sqlx.DB
 
-var userTable = `
-CREATE TABLE IF NOT EXISTS user(
-	id INT NOT NULL AUTO_INCREMENT,
-	email varchar(255) DEFAULT NULL,
-	phone varchar(10) DEFAULT NULL,
-	PRIMARY KEY (id),
-	CONSTRAINT UNIQUE(email),
-	CONSTRAINT UNIQUE(phone)
-);
-`
-
 // handleRequest Sends out the MMS Message using the Twilio Service
-func handleCrudRequest(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func handleCrudRequest() (events.APIGatewayProxyResponse, error) {
 	fmt.Println("Actual function start and create the Database")
-	// db.MustExec(`CREATE DATABASE IF NOT EXISTS ?`, dbName)
-	db.MustExec(fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s`, dbName))
-	// db.MustExec(fmt.Sprintf(`USE %s`, dbName))
+	transactions := []UserTransaction{}
+	err := db.Select(&transactions, fmt.Sprintf(`SELECT * from %s`, dbTableName))
+	if err != nil {
+		fmt.Println(err)
+	}
 
-	// db.MustExec(fmt.Sprintf("CREATE USER '%s' IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS';", dbServiceUser))
-	// db.MustExec(fmt.Sprintf("GRANT ALL ON PRIVILEDGES ON %s.* TO '%s'@'%';", dbName, dbServiceUser))
-	// db.MustExec("FLUSH PRIVILEDGES;")
-
-	// db.MustExec(userTable)
+	out, serializationErr := json.Marshal(transactions)
+	if serializationErr != nil {
+		fmt.Println(serializationErr)
+	}
 
 	return events.APIGatewayProxyResponse{
 		StatusCode: 200,
-		Body:       "Hello there",
-		Headers: map[string]string{
-			"Access-Control-Allow-Origin":  "*",
-			"Access-Control-Allow-Methods": "*",
-			"Access-Control-Allow-Headers": "*",
-		},
+		Body:       string(out),
 	}, nil
 }
 
@@ -62,9 +57,13 @@ func main() {
 
 func init() {
 	// Login to the DB
-	connectionStr := fmt.Sprintf("%s:%s@tcp(%s:%s)/?timeout=10s", dbAdminUser, dbPassword, dbHost, dbPort)
+	awsCred := credentials.NewEnvCredentials()
+	dbHost := os.Getenv("DB_HOST")
+	dbUser := os.Getenv("DB_SERVICE_USER")
+	region := os.Getenv("AWS_DEFAULT_REGION")
+	token, err := rdsutils.BuildAuthToken(fmt.Sprintf("%s:%d", dbHost, 3306), region, dbUser, awsCred)
+	connectionStr := fmt.Sprintf("%s:%s@tcp(%s)/%s?tls=true&allowCleartextPasswords=1", dbUser, token, dbHost, dbName)
 
-	var err error
 	db, err = sqlx.Connect("mysql", connectionStr)
 	if err != nil {
 		log.Fatalln(err)
