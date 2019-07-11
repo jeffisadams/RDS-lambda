@@ -19,9 +19,6 @@ Parameters:
     NoEcho: true
     Type: String
     Default: testing1
-  Version:
-    Type: String
-    Default: v1
 
 Resources:
 ##
@@ -176,122 +173,44 @@ Resources:
       PubliclyAccessible: true
       DBSubnetGroupName: !Ref PublicSubnetGroup
 
-##
-# IAM Role to provide Access to RDS for the Lambda functions
-##
-  LambdaRDSExecutionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-        - Effect: Allow
-          Principal:
-            Service:
-            - lambda.amazonaws.com
-          Action:
-          - sts:AssumeRole
-      Path: "/"
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
-      Policies:
-      - PolicyName: RDSTokenAccessPolicy
-        PolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action:
-                - rds-db:connect
-              Resource: !Sub "arn:aws:rds-db:${AWS::Region}:${AWS::AccountId}:dbuser:cluster-R2XJWZ3WIRVJET2525ZXTTFHOA/${RDSDatabaseUserName}"
-
-##
-# Database initialization Custom Resource Code
-##
-
-  # API Lambda
-  ServiceApi:
-    Type: AWS::Serverless::Api
-    Properties:
-      Name: ServiceApi
-      StageName: !Ref Version
-
-  DeployLambdaFunction:
-    Type: AWS::Serverless::Function
-    Description: Boilerplate function to create a database, a user, and a table for use in the subsequent service calls
-    Properties:
-      Handler: ./dist/deploy
-      Timeout: 30
-      Policies:
-        - AWSLambdaVPCAccessExecutionRole
-      Environment:
-        Variables:
-          # We create this user in this function so we can connect in the future using a role
-          DB_SERVICE_USER: !Ref RDSDatabaseUserName
-          DB_ADMIN_USER: admin
-          DB_PASSWORD: !Ref RDSDatabaseUserPassword
-          DB_HOST: !GetAtt RDSDatabase.Endpoint.Address
-          DB_PORT: !GetAtt RDSDatabase.Endpoint.Port
-          DB_NAME: !Ref DatabaseName
-          DB_TABLE_NAME: !Ref DatabaseTableName
-      VpcConfig:
-        SecurityGroupIds:
-          - !GetAtt LambdaSecurityGroup.GroupId
-        SubnetIds:
-          - !Ref PublicSubnetA
-          - !Ref PublicSubnetB
-      Events:
-        CreateUser:
-          Type: Api
-          Properties:
-            Path: /deploy
-            RestApiId: !Ref ServiceApi
-            Method: Get
-
-  LambdaFunction:
-    Type: AWS::Serverless::Function
-    Description: Function to get the data out of the database
-    Properties:
-      Handler: ./dist/main
-      Timeout: 30
-      Role: !GetAtt LambdaRDSExecutionRole.Arn
-      Environment:
-        Variables:
-          DB_SERVICE_USER: !Ref RDSDatabaseUserName
-          DB_HOST: !GetAtt RDSDatabase.ReadEndpoint.Address
-          DB_PORT: !GetAtt RDSDatabase.Endpoint.Port
-          DB_NAME: !Ref DatabaseName
-          DB_TABLE_NAME: !Ref DatabaseTableName
-          ROLE_ARN: !GetAtt LambdaRDSExecutionRole.Arn
-      VpcConfig:
-        SecurityGroupIds:
-          - !GetAtt LambdaSecurityGroup.GroupId
-        SubnetIds:
-          - !Ref PublicSubnetA
-          - !Ref PublicSubnetB
-      Events:
-        CreateUser:
-          Type: Api
-          Properties:
-            Path: /transactions
-            RestApiId: !Ref ServiceApi
-            Method: Get
-
 Outputs:
   VPCID:
     Description: The Logical ID for the VPC
     Value: !Ref VPC
     Export:
       Name: VPCID
+  PublicSubnetA:
+    Description: The ID for Public Subnet A
+    Value: !Ref PublicSubnetA
+    Export:
+      Name: PublicSubnetA
+  PublicSubnetB:
+    Description: The ID for Public Subnet B
+    Value: !Ref PublicSubnetB
+    Export:
+      Name: PublicSubnetB
   LambdaSecurityGroupId:
     Description: The Security Group to put on the lambdas that need DB Access
     Value: !GetAtt LambdaSecurityGroup.GroupId
     Export:
       Name: LambdaSecurityGroupId
+  RDSDatabaseName:
+    Description: Database Name
+    Value: !Ref DatabaseName
+    Export:
+      Name: RDSDatabaseName
+  RDSDatabaseTableName:
+    Description: Database Table Name
+    Value: !Ref DatabaseTableName
+    Export:
+      Name: RDSDatabaseTableName
+  RDSDatabaseUserName:
+    Description: Database Service User Name
+    Value: !Ref RDSDatabaseUserName
+    Export:
+      Name: RDSDatabaseUserName
   RDSDatabaseReadHost:
     Description: Database Host URL
     Value: !GetAtt RDSDatabase.ReadEndpoint.Address
     Export:
       Name: RDSDatabaseReadHost
-  ApiUrl:
-    Description: The API URL
-    Value: !Sub "https://${ServiceApi}.execute-api.${AWS::Region}.amazonaws.com/${Version}"

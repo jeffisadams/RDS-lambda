@@ -1,0 +1,82 @@
+Description: The API Gateway Template and the associated RDS Connection information
+Transform: "AWS::Serverless-2016-10-31"
+
+Globals:
+  Function:
+    Runtime: go1.x
+
+Parameters:
+  RDSClusterIdentifier:
+    Type: String
+  Version:
+    Type: String
+    Default: v1
+
+Resources:
+##
+# IAM Role to provide Access to RDS for the Lambda functions
+##
+  LambdaRDSExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+      - PolicyName: RDSTokenAccessPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - rds-db:connect
+              Resource: !Sub "arn:aws:rds-db:${AWS::Region}:${AWS::AccountId}:dbuser:${RDSClusterIdentifier}/${RDSDatabaseUserName}"
+
+  # API Lambda
+  ServiceApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: ServiceApi
+      StageName: !Ref Version
+
+  LambdaFunction:
+    Type: AWS::Serverless::Function
+    Description: Function to get the data out of the database
+    Properties:
+      Handler: ./dist/main
+      Timeout: 30
+      Role: !GetAtt LambdaRDSExecutionRole.Arn
+      Environment:
+        Variables:
+          DB_SERVICE_USER: !ImportValue RDSDatabaseUserName
+          DB_HOST: !ImportValue RDSDatabaseReadHost
+          DB_NAME: !ImportValue RDSDatabaseName
+          DB_TABLE_NAME: !ImportValue RDSDatabaseTableName
+          ROLE_ARN: !GetAtt LambdaRDSExecutionRole.Arn
+      VpcConfig:
+        SecurityGroupIds:
+          - !ImportValue LambdaSecurityGroupId
+        SubnetIds:
+          - !ImportValue PublicSubnetA
+          - !ImportValue PublicSubnetB
+      Events:
+        CreateUser:
+          Type: Api
+          Properties:
+            Path: /transactions
+            RestApiId: !Ref ServiceApi
+            Method: Get
+
+Outputs:
+  ApiUrl:
+    Description: The API URL
+    Value: !Sub "https://${ServiceApi}.execute-api.${AWS::Region}.amazonaws.com/${Version}"
