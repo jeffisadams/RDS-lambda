@@ -53,12 +53,12 @@ Resources:
     Description: Function to get the data out of the database
     Properties:
       Handler: ./dist/main
-      Timeout: 30
-      Role: !GetAtt LambdaRDSExecutionRole.Arn
+      Policies:
+        - AWSLambdaVPCAccessExecutionRole
       Environment:
         Variables:
-          DB_SERVICE_USER: !ImportValue RDSDatabaseUserName
           DB_HOST: !ImportValue RDSDatabaseReadHost
+          DB_SERVICE_USER: !ImportValue RDSDatabaseUserName
           DB_NAME: !ImportValue RDSDatabaseName
           DB_TABLE_NAME: !ImportValue RDSDatabaseTableName
           ROLE_ARN: !GetAtt LambdaRDSExecutionRole.Arn

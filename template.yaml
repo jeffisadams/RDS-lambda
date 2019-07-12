@@ -8,17 +8,24 @@ Globals:
 Parameters:
   DatabaseName:
     Type: String
-    Default: testdatabase
   DatabaseTableName:
     Type: String
     Default: transactions
-  RDSDatabaseUserName:
+  ServiceUserName:
     Type: String
-    Default: lambda_user
-  RDSDatabaseUserPassword:
+  ServiceUserPassword:
     NoEcho: true
     Type: String
-    Default: testing1
+  AdminUserName:
+    Type: String
+  AdminUserPassword:
+    NoEcho: true
+    Type: String
+  YourExternalIp:
+    Type: String
+  Version:
+    Type: String
+    Default: v1
 
 Resources:
 ##
@@ -123,11 +130,7 @@ Resources:
       - IpProtocol: tcp
         FromPort: 3306
         ToPort: 3306
-        CidrIp: 69.251.135.83/32
-      - IpProtocol: tcp
-        FromPort: 3306
-        ToPort: 3306
-        CidrIp: 108.56.183.61/32
+        CidrIp: !Sub ${YourExternalIp}/32
       - IpProtocol: tcp
         FromPort: 3306
         ToPort: 3306
@@ -156,8 +159,8 @@ Resources:
       DBClusterIdentifier: !Ref DatabaseName
       Engine: aurora
       EnableIAMDatabaseAuthentication: true
-      MasterUsername: admin
-      MasterUserPassword: !Ref RDSDatabaseUserPassword
+      MasterUsername: !Ref AdminUserName
+      MasterUserPassword: !Ref AdminUserPassword
       DBSubnetGroupName: !Ref PublicSubnetGroup
       VpcSecurityGroupIds:
         - !GetAtt DatabaseSecurityGroup.GroupId
@@ -173,44 +176,44 @@ Resources:
       PubliclyAccessible: true
       DBSubnetGroupName: !Ref PublicSubnetGroup
 
+##
+# Lambda API
+##
+  ServiceApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: ServiceApi
+      StageName: !Ref Version
+  LambdaFunction:
+    Type: AWS::Serverless::Function
+    Description: Function to get the data out of the database
+    Properties:
+      Handler: ./dist/main
+      Timeout: 30
+      Policies:
+        - AWSLambdaVPCAccessExecutionRole
+      Environment:
+        Variables:
+          DB_SERVICE_USER: !Ref ServiceUserName
+          DB_SERVICE_PASSWORD: !Ref ServiceUserPassword
+          DB_HOST: !GetAtt RDSDatabase.ReadEndpoint.Address
+          DB_NAME: !Ref DatabaseName
+          DB_TABLE_NAME: !Ref DatabaseTableName
+      VpcConfig:
+        SecurityGroupIds:
+          - !GetAtt LambdaSecurityGroup.GroupId
+        SubnetIds:
+          - !Ref PublicSubnetA
+          - !Ref PublicSubnetB
+      Events:
+        CreateUser:
+          Type: Api
+          Properties:
+            Path: /transactions
+            RestApiId: !Ref ServiceApi
+            Method: Get
+
 Outputs:
-  VPCID:
-    Description: The Logical ID for the VPC
-    Value: !Ref VPC
-    Export:
-      Name: VPCID
-  PublicSubnetA:
-    Description: The ID for Public Subnet A
-    Value: !Ref PublicSubnetA
-    Export:
-      Name: PublicSubnetA
-  PublicSubnetB:
-    Description: The ID for Public Subnet B
-    Value: !Ref PublicSubnetB
-    Export:
-      Name: PublicSubnetB
-  LambdaSecurityGroupId:
-    Description: The Security Group to put on the lambdas that need DB Access
-    Value: !GetAtt LambdaSecurityGroup.GroupId
-    Export:
-      Name: LambdaSecurityGroupId
-  RDSDatabaseName:
-    Description: Database Name
-    Value: !Ref DatabaseName
-    Export:
-      Name: RDSDatabaseName
-  RDSDatabaseTableName:
-    Description: Database Table Name
-    Value: !Ref DatabaseTableName
-    Export:
-      Name: RDSDatabaseTableName
-  RDSDatabaseUserName:
-    Description: Database Service User Name
-    Value: !Ref RDSDatabaseUserName
-    Export:
-      Name: RDSDatabaseUserName
-  RDSDatabaseReadHost:
-    Description: Database Host URL
-    Value: !GetAtt RDSDatabase.ReadEndpoint.Address
-    Export:
-      Name: RDSDatabaseReadHost
+  ApiUrl:
+    Description: The API URL
+    Value: !Sub "https://${ServiceApi}.execute-api.${AWS::Region}.amazonaws.com/${Version}/transactions"

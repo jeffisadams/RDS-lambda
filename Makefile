@@ -1,32 +1,19 @@
-
-# Ensuring we have some default variable names when they aren't otherwise set
-ifeq ($(STACK_NAME),)
-STACK_NAME := 'RDS-lambda-test-stack'
-endif
+STACK_NAME := RDS-lambda-test-stack
+DB_NAME := testdatabase
+DB_TABLE_NAME := transactions
+DB_SERVICE_USER := lambda_user
+DB_SERVICE_PASSWORD := insecure_1234
+DB_ADMIN_USERNAME := admin
+DB_ADMIN_PASSWORD := event_more_insecure_1234
 
 ifeq ($(STACK_BUCKET),)
-STACK_BUCKET := 'RDS-test-stack-plumbing-bucket'
+$(error You must specify STACK_BUCKET)
 endif
 
-ifeq ($(DB_SERVICE_USER),)
-DB_SERVICE_USER := 'lambda_user'
+ifeq ($(YOUR_IP),)
+$(error You must specify YOUR_IP)
 endif
 
-ifeq ($(DB_ADMIN_USER),)
-DB_ADMIN_USER := 'admin'
-endif
-
-ifeq ($(DB_PASSWORD),)
-DB_PASSWORD := 'testPassword'
-endif
-
-ifeq ($(DB_NAME),)
-DB_NAME := 'testdatabase'
-endif
-
-ifeq ($(DB_NAME),)
-DB_TABLE_NAME := 'transactions'
-endif
 
 .PHONY: test
 test:
@@ -47,17 +34,11 @@ deps: clean
 
 .PHONY: build
 build: deps
-	GOOS=linux go build -o dist/deploy ./src/deploy.go
+	go build -o dist/init ./src/init.go
 	GOOS=linux go build -o dist/main ./src/main.go
-	GOOS=linux go build -o dist/test_deploy ./src/test_deploy.go
 
-# Leaving this here as a tidbit of extra info, but it's not 
-# .PHONY: api
-# api: build
-# 	sam local start-api --env-vars env.json
-
-.PHONY: deploy
-deploy:
+.PHONY: deploy_rds
+deploy_rds:
 	aws cloudformation package \
 		--template-file template.yaml \
 		--output-template template_deploy.yaml \
@@ -67,32 +48,20 @@ deploy:
 		--no-fail-on-empty-changeset \
 		--template-file template_deploy.yaml \
 		--stack-name $(STACK_NAME) \
-		--capabilities CAPABILITY_IAM
+		--capabilities CAPABILITY_IAM \
+		--parameter-overrides "DatabaseName=$(DB_NAME)" "DatabaseTableName=$(DB_TABLE_NAME)" "ServiceUserName=$(DB_SERVICE_USER)" "ServiceUserPassword=$(DB_SERVICE_PASSWORD)" "AdminUserName=$(DB_ADMIN_USERNAME)" "AdminUserPassword=$(DB_ADMIN_PASSWORD)" "YourExternalIp=$(YOUR_IP)"
 
 .PHONY: teardown
 teardown:
 	aws cloudformation delete-stack --stack-name $(STACK_NAME)
-	aws cloudformation delete-stack --stack-name $(STACK_NAME)
 	clean
 
 .PHONY: init_db
-init_db: build
+init_db:
+	./dist/init $(DB_ADMIN_USERNAME) $(DB_ADMIN_PASSWORD) $(shell aws rds describe-db-clusters --db-cluster-identifier $(DB_NAME) --query 'DBClusters[0].Endpoint' --output text) $(DB_NAME) $(DB_TABLE_NAME) $(DB_SERVICE_USER) $(DB_SERVICE_PASSWORD)
 
-	DB_HOST = $(shell aws rds describe-db-clusters --db-cluster-identifier testdatabase --output text)
-	echo $(DB_HOST)
-	# ./dist/init
-
-
-.PHONY: deploy_api
-deploy_api:
-	aws cloudformation package \
-		--template-file template.yaml \
-		--output-template api_template_deploy.yaml \
-		--s3-bucket $(STACK_BUCKET)
-
-	aws cloudformation deploy \
-		--no-fail-on-empty-changeset \
-		--template-file api_template_deploy.yaml \
-		--stack-name $(STACK_NAME)_api \
-		--parameter-overrides "RDSClusterID=$(shell aws rds describe-db-clusters --db-cluster-identifier testdatabase --query 'DBClusters[0].DbClusterResourceId' --output text)" \
-		--capabilities CAPABILITY_IAM
+.PHONY: deploy
+deploy:
+	build
+	deploy_rds
+	init_db
