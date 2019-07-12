@@ -8,17 +8,11 @@ Globals:
 Parameters:
   DatabaseName:
     Type: String
-    Default: testdatabase
-  DatabaseTableName:
-    Type: String
-    Default: transactions
-  RDSDatabaseUserName:
-    Type: String
-    Default: lambda_user
-  RDSDatabaseUserPassword:
+  DatabaseUserPassword:
     NoEcho: true
     Type: String
-    Default: testing1
+  UserIP:
+    Type: String
 
 Resources:
 ##
@@ -32,7 +26,7 @@ Resources:
       EnableDnsHostnames: true
       Tags:
       - Key: name
-        Value:  !Join ['', [!Ref DatabaseName, "-VPC" ]]   
+        Value:  !Join ['', [!Ref DatabaseName, "-VPC" ]]
   InternetGateway:
     Type: AWS::EC2::InternetGateway
     DependsOn: VPC
@@ -99,12 +93,6 @@ Resources:
     Properties:
       GroupDescription: Allow http to client host
       VpcId: !Ref VPC
-      # SecurityGroupIngress:
-      # Let's try without this and see if I can still route to the lambda function in the GW
-      # - IpProtocol: tcp
-      #   FromPort: 80
-      #   ToPort: 80
-      #   CidrIp: 0.0.0.0/0
       SecurityGroupEgress:
       - IpProtocol: '-1'
         FromPort: -1
@@ -120,17 +108,13 @@ Resources:
       GroupDescription: Allow http to client host
       VpcId: !Ref VPC
       SecurityGroupIngress:
-      - IpProtocol: tcp
-        FromPort: 3306
-        ToPort: 3306
-        CidrIp: 69.251.135.83/32
-      - IpProtocol: tcp
-        FromPort: 3306
-        ToPort: 3306
-        CidrIp: 108.56.183.61/32
-      - IpProtocol: tcp
-        FromPort: 3306
-        ToPort: 3306
+      - IpProtocol: "-1"
+        FromPort: -1
+        ToPort: -1
+        CidrIp: !Sub "${UserIP}/32"
+      - IpProtocol: "-1"
+        FromPort: -1
+        ToPort: -1
         SourceSecurityGroupId: !GetAtt LambdaSecurityGroup.GroupId
       SecurityGroupEgress:
       - IpProtocol: "-1"
@@ -157,7 +141,7 @@ Resources:
       Engine: aurora
       EnableIAMDatabaseAuthentication: true
       MasterUsername: admin
-      MasterUserPassword: !Ref RDSDatabaseUserPassword
+      MasterUserPassword: !Ref DatabaseUserPassword
       DBSubnetGroupName: !Ref PublicSubnetGroup
       VpcSecurityGroupIds:
         - !GetAtt DatabaseSecurityGroup.GroupId
@@ -165,6 +149,7 @@ Resources:
     Type: AWS::RDS::DBInstance
     DependsOn:
       - PublicSubnetA
+      - PublicSubnetB
     Properties:
       DBClusterIdentifier: !Ref RDSDatabase
       # Customize this to the size machine you want
@@ -194,21 +179,6 @@ Outputs:
     Value: !GetAtt LambdaSecurityGroup.GroupId
     Export:
       Name: LambdaSecurityGroupId
-  RDSDatabaseName:
-    Description: Database Name
-    Value: !Ref DatabaseName
-    Export:
-      Name: RDSDatabaseName
-  RDSDatabaseTableName:
-    Description: Database Table Name
-    Value: !Ref DatabaseTableName
-    Export:
-      Name: RDSDatabaseTableName
-  RDSDatabaseUserName:
-    Description: Database Service User Name
-    Value: !Ref RDSDatabaseUserName
-    Export:
-      Name: RDSDatabaseUserName
   RDSDatabaseReadHost:
     Description: Database Host URL
     Value: !GetAtt RDSDatabase.ReadEndpoint.Address

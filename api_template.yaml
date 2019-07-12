@@ -6,7 +6,13 @@ Globals:
     Runtime: go1.x
 
 Parameters:
-  RDSClusterIdentifier:
+  DatabaseName:
+    Type: String
+  DatabaseUserName:
+    Type: String
+  DatabaseTableName:
+    Type: String
+  RDSClusterID:
     Type: String
   Version:
     Type: String
@@ -38,8 +44,8 @@ Resources:
           Statement:
             - Effect: Allow
               Action:
-                - rds-db:connect
-              Resource: !Sub "arn:aws:rds-db:${AWS::Region}:${AWS::AccountId}:dbuser:${RDSClusterIdentifier}/${RDSDatabaseUserName}"
+                - "rds-db:connect"
+              Resource: !Sub "arn:aws:rds-db:${AWS::Region}:${AWS::AccountId}:dbuser:${RDSClusterID}/${DatabaseUserName}"
 
   # API Lambda
   ServiceApi:
@@ -57,11 +63,10 @@ Resources:
       Role: !GetAtt LambdaRDSExecutionRole.Arn
       Environment:
         Variables:
-          DB_SERVICE_USER: !ImportValue RDSDatabaseUserName
+          DB_SERVICE_USER: !Ref DatabaseUserName
           DB_HOST: !ImportValue RDSDatabaseReadHost
-          DB_NAME: !ImportValue RDSDatabaseName
-          DB_TABLE_NAME: !ImportValue RDSDatabaseTableName
-          ROLE_ARN: !GetAtt LambdaRDSExecutionRole.Arn
+          DB_NAME: !Ref DatabaseName
+          DB_TABLE_NAME: !Ref DatabaseTableName
       VpcConfig:
         SecurityGroupIds:
           - !ImportValue LambdaSecurityGroupId
@@ -79,4 +84,4 @@ Resources:
 Outputs:
   ApiUrl:
     Description: The API URL
-    Value: !Sub "https://${ServiceApi}.execute-api.${AWS::Region}.amazonaws.com/${Version}"
+    Value: !Sub "https://${ServiceApi}.execute-api.${AWS::Region}.amazonaws.com/${Version}/transactions"
