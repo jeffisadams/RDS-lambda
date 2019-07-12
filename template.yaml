@@ -69,7 +69,7 @@ Resources:
       - Key: Names
         Value: !Sub ${DatabaseName}-PublicA
 
-  # Some route tables
+  # Route Table
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -106,12 +106,6 @@ Resources:
     Properties:
       GroupDescription: Allow http to client host
       VpcId: !Ref VPC
-      # SecurityGroupIngress:
-      # Let's try without this and see if I can still route to the lambda function in the GW
-      # - IpProtocol: tcp
-      #   FromPort: 80
-      #   ToPort: 80
-      #   CidrIp: 0.0.0.0/0
       SecurityGroupEgress:
       - IpProtocol: '-1'
         FromPort: -1
@@ -127,10 +121,13 @@ Resources:
       GroupDescription: Allow http to client host
       VpcId: !Ref VPC
       SecurityGroupIngress:
+      # Allows you to log into mysql from home
       - IpProtocol: tcp
         FromPort: 3306
         ToPort: 3306
         CidrIp: !Sub ${YourExternalIp}/32
+      # Rule to allow traffic in from resources that are attached to the Lambda Security group
+      # This is the specific rule that allows the Lambda to have network access to our RDS cluster
       - IpProtocol: tcp
         FromPort: 3306
         ToPort: 3306
