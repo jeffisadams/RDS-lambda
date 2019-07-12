@@ -24,7 +24,6 @@ var db *sqlx.DB
 
 // handleRequest Sends out the MMS Message using the Twilio Service
 func handleCrudRequest() (events.APIGatewayProxyResponse, error) {
-	fmt.Println("Actual function start and create the Database")
 	dbTableName := os.Getenv("DB_TABLE_NAME")
 	transactions := []UserTransaction{}
 	err := db.Select(&transactions, fmt.Sprintf(`SELECT * from %s`, dbTableName))

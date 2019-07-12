@@ -18,12 +18,8 @@ func main() {
 	dbServiceUser := os.Args[6]
 	dbServicePassword := os.Args[7]
 
-	fmt.Println("What is our env")
-	fmt.Println(dbAdminUser, dbAdminPassword, dbHost, dbName, dbTableName, dbServiceUser, dbServicePassword)
-
 	// Login to the DB
 	connectionStr := fmt.Sprintf("%s:%s@tcp(%s:%s)/?timeout=10s", dbAdminUser, dbAdminPassword, dbHost, "3306")
-	fmt.Println(connectionStr)
 
 	// In this function, I know it runs only once so I can put the connection pool in the lambda
 	db, connectionErr := sqlx.Connect("mysql", connectionStr)
