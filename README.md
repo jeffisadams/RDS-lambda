@@ -5,12 +5,17 @@ Visit (Here once I publish I will update)[https://tenmilesquare.com/] to view th
 - Set the following environment variables
   - STACK_NAME
   - STACK_BUCKET (this bucket must exist in your AWS environment)
+  - YOUR_IP What is your public IP so it gets added to the security group
+    - This is the only way you'll be able to access your database
 - run `make deploy`
-- run `curl {{Url to your api}}/`
+  - This will setup the database and run a custom function to create the database
+- run `make deploy_api`
+  - This requires that the previous stack has completed initializing
+- run `curl {{Url to your api}}/transactions`
   - No Authentication at this time
+  - This will return two data transaction records for bob and jane at example.com
 
 PRs and suggestions are welcome.
-
 
 
 --- Start the Blog Content
@@ -19,11 +24,6 @@ PRs and suggestions are welcome.
 ## Lambda example in a VPC backed by RDS
 
 Special Thanks to Jason Mao for the help reviewing the network VPC setup.
-
-## Terms
-- [VPC](https://aws.amazon.com/vpc/) "Virtual Private Cloud"
-  - Managed and provisioned network space where you get to set the rules.
-- [Subnet](https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Subnets.html) "
 
 ## TLDR;
   Code Located [here](https://github.com/jeffisadams/RDS-lambda).
@@ -38,7 +38,12 @@ Special Thanks to Jason Mao for the help reviewing the network VPC setup.
 - Set the following environment variables
   - STACK_NAME
   - STACK_BUCKET (this bucket must exist in your AWS environment)
+  - YOUR_IP What is your public IP so it gets added to the security group
+    - This is the only way you'll be able to access your database
 - run `make deploy`
+  - This will setup the database and run a custom function to create the database
+- run `make deploy_api`
+  - This requires that the previous stack has completed initializing
 - run `curl {{Url to your api}}/transactions`
   - No Authentication at this time
   - This will return two data transaction records for bob and jane at example.com
@@ -122,11 +127,11 @@ Run `make teardown` to clean it all up.
 Most notably, you should not use the master user or master password to login from your lambda.  My initial goal was to create a Deploy lambda that creates the ability to log in via a role to the instance instead, but I don't know that I'll have time to include that.  If not, I'll do a follow up on custom resources.
 
 ## Reading List
-- General Links
+- VPC Links
   - [Virtual Private Cloud (VPC)](https://aws.amazon.com/vpc/)
-- VPC Tutorials
   - [VPC Routing](https://medium.com/@mda590/aws-routing-101-67879d23014d)
 - AWS RDS Connection Tutorials
   - [Token Authentication](https://aws.amazon.com/premiumsupport/knowledge-center/users-connect-rds-iam/)
   - [AWS Token Auth Example](https://github.com/aws/aws-sdk-go/blob/master/example/service/rds/rdsutils/authentication/iam_authentication.go)
   - [The one that had the working RDSUtils code in GO](https://luktom.net/en/e1544-aws-lambda-and-mysql-iam-authentication-in-go)
+- Custom Resource Links
