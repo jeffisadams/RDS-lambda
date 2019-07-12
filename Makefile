@@ -59,9 +59,3 @@ teardown:
 .PHONY: init_db
 init_db:
 	./dist/init $(DB_ADMIN_USERNAME) $(DB_ADMIN_PASSWORD) $(shell aws rds describe-db-clusters --db-cluster-identifier $(DB_NAME) --query 'DBClusters[0].Endpoint' --output text) $(DB_NAME) $(DB_TABLE_NAME) $(DB_SERVICE_USER) $(DB_SERVICE_PASSWORD)
-
-.PHONY: deploy
-deploy:
-	build
-	deploy_rds
-	init_db
