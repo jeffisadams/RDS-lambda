@@ -191,6 +191,8 @@ By contrast this is dead simple.  Three resources to add for a boilerplate versi
 - The subnet group
 We choose the VPC using the subnet group, otherwise it just attaches to the default VPC.  The default VPC is suitable for lots of things, but makes Template created security groups difficult.  Right here is where the zero to cluster and api breaks down without the VPC.  The instance will map one to one with an EC2 instance and apply the network rules we spent so much time with above via two config settings.  Obviously it is possible to add more instances, and we would need redundancy for production, but here's a start.
 
+One note:  Use SSM parameters to store your usernames / passwords if and when you do this in production.  I again wanted to keep things as simple as possible, but this is another place where you need higher security in the actual implementation for production. (Tutorial for SSM)[https://aws.amazon.com/blogs/mt/integrating-aws-cloudformation-with-aws-systems-manager-parameter-store/]
+
 ```
 RDSDatabase:
   Type: AWS::RDS::DBCluster
