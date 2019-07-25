@@ -65,7 +65,7 @@ My goal for this tutorial is to show as simple as possible end to end RDS plus L
 I always recommend utilizing some kind of infrastructure as code.  This stuff is complex and you need to iterate on it.  I promise you if you setup a VPC using the browser, you will forget all the steps next time you need one.  Having a reference and something to step through is critical.
 
 ### The VPC
-This template is long and has a lot of moving parts.  They are almost all dedicated to the VPC.  My goal is to get to the lambda connection, so I have glossed over an ocean of detail here.  It is also important to keep in mind that AWS did not invent these concepts.  They merely changed the names in confusing ways that made the marketing department happy.  With that in mind, this will be a lot easier to follow if you have some other networking knowledge.  Ensure you know the layered model, and ideally how IP and CIDR route traffic.
+This template is long and has a lot of moving parts.  They are almost all dedicated to the VPC.  My goal is to get to the lambda connection, so I have glossed over an ocean of detail here.  It is also important to keep in mind that AWS did not invent these concepts.  They merely changed them.  With that in mind, this will be a lot easier to follow if you have some other networking knowledge.  Ensure you know the layered model, and ideally how IP and CIDR route traffic.
 Here are the AWS Resources we are building.  There are more VPC related things to build for other use cases, but I am purposely ignoring them to keep us focused on this one use case.
 - VPC
   - The abstract grouping of everything else.  Logically isolated network from the rest of AWS.
