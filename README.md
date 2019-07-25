@@ -279,7 +279,7 @@ Environment:
 So I created a script to create a user.  This is the part that typically would have token authentication, but let's focus on the connectivity and I'll let better tutorials show the token auth steps (See Below).
 
 ### Init and user creation
-We need a user, a database, a table, and some data.  So let's wave our hands and run the script `make init_db`.  This runs a script in Go with command line Env variables.  My original intentionwas to make a custom resource to do this, but found the Go library for custom resources infuriating.  If you have any error of any kind, Cloudformation will wait 60 minutes to see if things stabilize.  Also, since the Lambda runs in a VPC.  Tearing down this Cloudformation template also takes about 30 minutes.  I have lost days of my life to this issue.  Secondly, that Lambda would have environment variables with your master username and password which didn't seem like a good idea.
+We need a user, a database, a table, and some data.  So let's wave our hands and run the script `make init_db`.  This runs a script in Go with command line Env variables.  My original intention was to make a custom resource to do this, but found the Go library for custom resources infuriating.  If you have any error of any kind, Cloudformation will wait 60 minutes to see if things stabilize.  Additionally, Lambda runs in a VPC so tearing down this Cloudformation template also takes about 30 minutes.  I have lost days of my life to this issue.  And finally, that Lambda would have environment variables with your master username and password which didn't seem like a good idea.
 
 ```
 db.MustExec(fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s`, dbName))
